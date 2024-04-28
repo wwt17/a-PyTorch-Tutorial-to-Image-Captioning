@@ -3,7 +3,9 @@ import numpy as np
 import h5py
 import json
 import torch
-from scipy.misc import imread, imresize
+from imageio import imread
+from PIL import Image
+imresize = lambda arr, size: np.array(Image.fromarray(arr).resize(size))
 from tqdm import tqdm
 from collections import Counter
 from random import seed, choice, sample
@@ -49,7 +51,7 @@ def create_input_files(dataset, karpathy_json_path, image_folder, captions_per_i
         if len(captions) == 0:
             continue
 
-        path = os.path.join(image_folder, img['filepath'], img['filename']) if dataset == 'coco' else os.path.join(
+        path = os.path.join(image_folder, img['filename'][-16:]) if dataset == 'coco' else os.path.join(
             image_folder, img['filename'])
 
         if img['split'] in {'train', 'restval'}:

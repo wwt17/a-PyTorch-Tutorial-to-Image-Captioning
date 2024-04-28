@@ -7,10 +7,15 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import skimage.transform
 import argparse
-from scipy.misc import imread, imresize
+from imageio import imread
 from PIL import Image
+imresize = lambda arr, size: np.array(Image.fromarray(arr).resize(size))
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def get_n_rows(n_items, n_cols):
+    return (n_items - 1) // n_cols + 1
 
 
 def caption_image_beam_search(encoder, decoder, image_path, word_map, beam_size=3):
@@ -104,7 +109,7 @@ def caption_image_beam_search(encoder, decoder, image_path, word_map, beam_size=
             top_k_scores, top_k_words = scores.view(-1).topk(k, 0, True, True)  # (s)
 
         # Convert unrolled indices to actual indices of scores
-        prev_word_inds = top_k_words / vocab_size  # (s)
+        prev_word_inds = top_k_words // vocab_size  # (s)
         next_word_inds = top_k_words % vocab_size  # (s)
 
         # Add new words to sequences, alphas
@@ -159,23 +164,35 @@ def visualize_att(image_path, seq, alphas, rev_word_map, smooth=True):
     :param rev_word_map: reverse word mapping, i.e. ix2word
     :param smooth: smooth weights?
     """
+    upscale = 24
+    size = (alphas.size(-2) * upscale, alphas.size(-1) * upscale)
+
     image = Image.open(image_path)
-    image = image.resize([14 * 24, 14 * 24], Image.LANCZOS)
+    image = image.resize((size[1], size[0]), Image.LANCZOS)
 
     words = [rev_word_map[ind] for ind in seq]
+
+    n_cols = 5
+    n_rows = get_n_rows(len(words), n_cols)
+
+    plt.figure(figsize=(5 * n_cols, 5 * n_rows))
 
     for t in range(len(words)):
         if t > 50:
             break
-        plt.subplot(np.ceil(len(words) / 5.), 5, t + 1)
+        plt.subplot(n_rows, n_cols, t + 1)
 
         plt.text(0, 1, '%s' % (words[t]), color='black', backgroundcolor='white', fontsize=12)
         plt.imshow(image)
         current_alpha = alphas[t, :]
         if smooth:
-            alpha = skimage.transform.pyramid_expand(current_alpha.numpy(), upscale=24, sigma=8)
+            alpha = skimage.transform.pyramid_expand(current_alpha.numpy(), upscale=upscale, sigma=8)
         else:
-            alpha = skimage.transform.resize(current_alpha.numpy(), [14 * 24, 14 * 24])
+            #alpha = skimage.transform.resize(current_alpha.numpy(), size)
+            import cv2
+            alpha = cv2.resize(
+                current_alpha.numpy(), size[::-1],
+                interpolation=cv2.INTER_NEAREST)
         if t == 0:
             plt.imshow(alpha, alpha=0)
         else:
@@ -189,8 +206,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Show, Attend, and Tell - Tutorial - Generate Caption')
 
     parser.add_argument('--img', '-i', help='path to image')
-    parser.add_argument('--model', '-m', help='path to model')
-    parser.add_argument('--word_map', '-wm', help='path to word map JSON')
+    parser.add_argument('--model', '-m', help='path to model', default='BEST_checkpoint_coco_5_cap_per_img_5_min_word_freq.pth.tar')
+    parser.add_argument('--word_map', '-wm', help='path to word map JSON', default='data/WORDMAP_coco_5_cap_per_img_5_min_word_freq.json')
     parser.add_argument('--beam_size', '-b', default=5, type=int, help='beam size for beam search')
     parser.add_argument('--dont_smooth', dest='smooth', action='store_false', help='do not smooth alpha overlay')
 
